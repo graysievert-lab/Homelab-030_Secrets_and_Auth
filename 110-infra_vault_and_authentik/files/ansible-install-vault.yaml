@@ -1,0 +1,204 @@
+- name: Vault play
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: ping
+      ansible.builtin.ping:
+
+    ################################################################################
+    - name: Create and configure 'vault' user
+      block:
+        - name: Create 'vault' user
+          ansible.builtin.user:
+            name: vault
+            system: yes
+            comment: "User to run Vault service"
+            shell: /bin/false
+            home: /opt/vault
+            groups: certaccess
+            state: present
+
+        - name: Add 'vault' user to sudoers
+          ansible.builtin.copy:
+            dest: /etc/sudoers.d/vault
+            content: "vault ALL=(ALL) NOPASSWD:ALL"
+            mode: "0440"
+
+    ################################################################################
+    - name: Install Vault
+      block:
+        - name: install vault repo
+          ansible.builtin.yum_repository:
+            name: hashicorp
+            description: Hashicorp Stable
+            baseurl: https://rpm.releases.hashicorp.com/RHEL/$releasever/$basearch/stable
+            gpgcheck: true
+            gpgkey: https://rpm.releases.hashicorp.com/gpg
+
+        - name: install dependencies
+          ansible.builtin.package:
+            state: latest
+            name:
+              - vault
+
+    ################################################################################
+    - name: Configure Firewall
+      block:
+        - name: install dependencies
+          ansible.builtin.package:
+            state: latest
+            name:
+              - firewalld
+
+        - name: Add vault ports to firewalld as a service
+          ansible.builtin.copy:
+            dest: "/etc/firewalld/services/vault.xml"
+            content: |
+              <?xml version="1.0" encoding="utf-8"?>
+              <service>
+                <short>vault</short>
+                <description>Vault service</description>
+                <port protocol="tcp" port="8200"/>
+              </service>
+
+        - name: enable firewalld
+          ansible.builtin.systemd_service:
+            name: firewalld.service
+            state: started
+            enabled: true
+
+        - name: allow services
+          ansible.posix.firewalld:
+            service: "{{ item }}"
+            zone: public
+            state: enabled
+            permanent: true
+            immediate: true
+          loop:
+            - http
+            - https
+            - vault
+
+    ################################################################################
+    - name: Download secrets plugin 'https://github.com/mollstam/vault-plugin-secrets-proxmox'
+      block:
+        - name: Create folder '/opt/vault/plugins'
+          ansible.builtin.file:
+            path: /opt/vault/plugins
+            state: directory
+            mode: '750'
+            owner: vault
+            group: vault
+        
+        - name: Download 'vault-plugin-secrets-proxmox_Linux_x86_64 v1.1.0'
+          ansible.builtin.get_url:
+            url: https://github.com/mollstam/vault-plugin-secrets-proxmox/releases/download/v1.1.0/vault-plugin-secrets-proxmox_Linux_x86_64
+            dest: /opt/vault/plugins/proxmox
+            checksum: sha256:0fd1633c052ccf715e5712e0b338bf81eb468ab61a4b40dd9f54c7dd7bdd0f09
+            owner: vault
+            group: vault
+            mode: '550'
+    
+    ################################################################################
+    - name: Configure 'vault' service
+      vars:
+        vault_service_path: /etc/systemd/system/vault.service
+        vault_service_content: |
+          [Unit]
+          Description="HashiCorp Vault - A tool for managing secrets"
+          Documentation=https://www.vaultproject.io/docs/
+          Requires=network-online.target
+          After=network-online.target
+          ConditionFileNotEmpty=/etc/vault.d/vault.hcl
+          StartLimitIntervalSec=60
+          StartLimitBurst=3
+
+          [Service]
+          User=vault
+          Group=vault
+          ProtectSystem=full
+          ProtectHome=read-only
+          PrivateTmp=yes
+          PrivateDevices=yes
+          SecureBits=keep-caps
+          AmbientCapabilities=CAP_IPC_LOCK
+          Capabilities=CAP_IPC_LOCK+ep
+          CapabilityBoundingSet=CAP_SYSLOG CAP_IPC_LOCK
+          NoNewPrivileges=yes
+          ExecStart=/usr/bin/vault server -config=/etc/vault.d/vault.hcl
+          ExecReload=/bin/kill --signal HUP $MAINPID
+          KillMode=process
+          KillSignal=SIGINT
+          Restart=on-failure
+          RestartSec=5
+          TimeoutStopSec=30
+          StartLimitInterval=60
+          StartLimitBurst=3
+          LimitNOFILE=65536
+          LimitMEMLOCK=infinity
+          LimitCORE=0
+
+          [Install]
+          WantedBy=multi-user.target
+        vault_config_path: /etc/vault.d/vault.hcl
+        vault_config_content: |
+          cluster_name = "Homelab Vault"
+          ui = true
+          log_level = "INFO"
+
+          api_addr = "https://{{ ansible_fqdn }}:8200"
+          cluster_addr = "https://{{ ansible_fqdn }}:8201"
+          disable_clustering = false
+
+          storage "raft" {
+            path    = "/opt/vault/data"
+            node_id = "master-node"
+          }
+          disable_mlock=true
+
+
+          default_lease_ttl = "24h"
+          max_lease_ttl = "24h"
+
+          listener "tcp" {
+            address = "0.0.0.0:8200"
+            cluster_address = "0.0.0.0:8201"
+            tls_disable = "false"
+            tls_cert_file = "/opt/tls/tls.crt"
+            tls_key_file = "/opt/tls/tls.key"
+            tls_min_version = "tls12"
+            tls_max_version = "tls13"
+            tls_disable_client_certs = "true"
+            telemetry {
+              unauthenticated_metrics_access = "true"
+            }
+          }
+
+          plugin_directory = "/opt/vault/plugins"
+
+          telemetry {
+            disable_hostname = true
+            prometheus_retention_time = "12h"
+          }
+
+      block:
+        - name: Create systemd service file for Vault
+          ansible.builtin.copy:
+            dest: "{{ vault_service_path }}"
+            content: "{{ vault_service_content }}"
+            mode: "0644"
+
+        - name: Create config file for Vault
+          ansible.builtin.copy:
+            dest: "{{ vault_config_path }}"
+            content: "{{ vault_config_content }}"
+            mode: "0644"
+
+        - name: Reload unitfiles, Enable and Start Vault service
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+            name: vault.service
+            state: started
+            enabled: true

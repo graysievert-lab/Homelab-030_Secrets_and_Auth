@@ -1,0 +1,148 @@
+- name: Acme.sh play
+  hosts: localhost
+  connection: local
+  become: true
+
+  tasks:
+    - name: ping
+      ansible.builtin.ping:
+    ################################################################################
+    - name: Prepare directory and share access to certs with group 'certaccess'
+      block:
+        - name: Create group 'certaccess'
+          ansible.builtin.group:
+            name: certaccess
+            state: present
+        - name: Create shared directory for certs
+          ansible.builtin.file:
+            path: "/opt/tls"
+            state: directory
+            owner: root
+            group: certaccess
+            mode: "2750"
+        - name: Set permissions for cert-key pair
+          ansible.builtin.file:
+            path: "/opt/tls/{{ item }}"
+            state: touch
+            owner: root
+            group: certaccess
+            mode: "640"
+          loop:
+            - tls.crt
+            - tls.key
+        
+        # second directory for authentik
+        - name: Create second directory for certs
+          ansible.builtin.file:
+            path: "/opt/init/authentik/certs"
+            state: directory
+            owner: 1000
+            group: 1000
+            mode: "770"
+        - name: Set permissions for cert-key pair
+          ansible.builtin.file:
+            path: "/opt/init/authentik/certs/{{ item }}"
+            state: touch
+            owner: 1000
+            group: 1000
+            mode: "660"
+          loop:
+            - tls.crt
+            - tls.key
+
+    - name: Install dependencies
+      ansible.builtin.dnf:
+        state: latest
+        name:
+          - socat
+################################################################################
+    - name: Configure acme.sh
+      block:
+        - name: Download 'acme.sh'
+          ansible.builtin.get_url:
+            url: https://raw.githubusercontent.com/acmesh-official/acme.sh/master/acme.sh
+            dest: /root/acme.sh
+            owner: root
+            group: root
+            mode: '777'
+
+        - name: Install acme.sh to the system
+          ansible.builtin.shell: |
+            HOME=/root USER=root /root/acme.sh \
+            --install \
+            --accountemail  acme@homelab.lan             
+          args:
+            chdir: "/root"
+        - name: Configure to use a local acme server
+          ansible.builtin.shell: |
+            HOME=/root USER=root /root/acme.sh \
+            --set-default-ca \
+            --server https://acme.lan:8443/acme/ACME@acme.lan/directory
+          # args:
+          #   chdir: "/root"
+
+        - name: "Issue cert for {{ ansible_fqdn }} and {{ ansible_default_ipv4.address }}"
+          ## --renew-hook is used as a workaround to copy certs into several folders.
+          ## --renew-hook is executed after each certificate renewal. 
+          ## Here we configuring renew hook to run 'acme.sh --install-cert' twice to distribute certificates into two folders
+          ## As acme.sh stores the last '--install-cert' in the .conf, certs will be installed twice, which should not be an issue. 
+          ## [TODO] Perhaps it is better to use 'acme.sh --deploy --domain aegis.lan --deploy-hook "mycustomscript"'
+          ## instead of 'acme.sh --install-cert'
+          ansible.builtin.shell: |
+            HOME=/root USER=root /root/acme.sh \
+            --issue --standalone --force \
+            --domain {{ ansible_fqdn }} --domain {{ ansible_default_ipv4.address }} \
+            --valid-to  "+2d" \
+            --renew-hook '/root/acme.sh --install-cert --domain {{ ansible_fqdn }} --fullchain-file /opt/tls/tls.crt --key-file /opt/tls/tls.key --reloadcmd "pkill -SIGHUP vault" &&
+                          /root/acme.sh --install-cert --domain {{ ansible_fqdn }} --fullchain-file /opt/init/authentik/certs/tls.crt --key-file /opt/init/authentik/certs/tls.key'
+          # args:
+          #   chdir: "/root/.acme.sh"
+            
+        - name: "Ianstall cert do shared folder"
+          ansible.builtin.shell: |
+            HOME=/root USER=root /root/acme.sh \
+            --install-cert \
+            --domain {{ ansible_fqdn }} \
+            --fullchain-file /opt/tls/tls.crt  \
+            --key-file /opt/tls/tls.key
+          # args:
+          #   chdir: "/root/.acme.sh"
+
+        - name: "Ianstall cert do authentik folder"
+          ansible.builtin.shell: |
+            HOME=/root USER=root /root/acme.sh \
+            --install-cert \
+            --domain {{ ansible_fqdn }} \
+            --fullchain-file /opt/init/authentik/certs/tls.crt  \
+            --key-file /opt/init/authentik/certs/tls.key
+          # args:
+          #   chdir: "/root/.acme.sh"
+
+
+# /root/acme.sh --install --accountemail  acme@homelab.lan 
+
+# /root/acme.sh --set-default-ca --server https://acme.lan:8443/acme/ACME@acme.lan/directory
+
+# /root/acme.sh --issue --standalone --force \
+# --domain aegis.lan --domain 10.1.2.1 --valid-to  "+2d" \
+# --renew-hook "echo Renewed"
+
+# /root/acme.sh --issue --standalone --force \
+# --domain aegis.lan --domain 10.1.2.1 --valid-to  "+2d" \
+# --renew-hook '/root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/init/authentik/certs/tls.crt --key-file /opt/init/authentik/certs/tls.key &&
+#               /root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/tls/tls.crt --key-file /opt/tls/tls.key --reloadcmd "pkill -SIGHUP vault"'
+
+# /root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/init/authentik/certs/tls.crt --fullchain-file /opt/tls/tls.crt
+
+
+# /root/acme.sh --install-cert \
+# --domain aegis.lan \
+# --cert-file      /opt/new1/cert.pem  \
+# --key-file       /opt/new1/key.pem  \
+# --fullchain-file /opt/new1/fullchain.pem \
+# --reloadcmd     "reload new1"
+
+#/root/acme.sh --deploy --domain aegis.lan --deploy-hook "myscript"
+#/root/acme.sh --renew --force --domain aegis.lan
+
+####--------

@@ -1,0 +1,116 @@
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    deploy:
+      mode: replicated
+      replicas: 1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    volumes:
+      - database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/PG_PASS
+      POSTGRES_USER: authentik
+      POSTGRES_DB: authentik
+    secrets:
+      - PG_PASS
+
+  redis:
+    image: docker.io/library/redis:7.4.0-alpine3.20
+    deploy:
+      mode: replicated
+      replicas: 1
+    command: --save 60 1 --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 3s
+    volumes:
+      - redis:/data
+
+  server:
+    image: ghcr.io/goauthentik/server:2024.6.3
+    deploy:
+      mode: replicated
+      replicas: 1
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: file:///run/secrets/PG_PASS
+      AUTHENTIK_SECRET_KEY: file:///run/secrets/AUTHENTIK_SECRET_KEY
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    volumes:
+      - /opt/init/authentik/media:/media
+      - /opt/init/authentik/custom-templates:/templates
+    ports:
+      - "443:9443" # https
+      #- "9000:9000" # http
+      - "9300:9300" # metrics
+    depends_on:
+      - postgresql
+      - redis
+    secrets:
+      - AUTHENTIK_SECRET_KEY
+      - PG_PASS
+
+  worker:
+    image: ghcr.io/goauthentik/server:2024.6.3
+    deploy:
+      mode: replicated
+      replicas: 1
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: file:///run/secrets/PG_PASS
+      AUTHENTIK_SECRET_KEY: file:///run/secrets/AUTHENTIK_SECRET_KEY
+      AUTHENTIK_DISABLE_STARTUP_ANALYTICS: "true"
+      AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+    # `user: root` and the docker socket volume are optional.
+    # See more for the docker socket integration here:
+    # https://goauthentik.io/docs/outposts/integrations/docker
+    # Removing `user: root` also prevents the worker from fixing the permissions
+    # on the mounted folders, so when removing this make sure the folders have the correct UID/GID
+    # (1000:1000 by default)
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/init/authentik/media:/media
+      - /opt/init/authentik/custom-templates:/templates
+      - /opt/init/authentik/certs:/certs
+    depends_on:
+      - postgresql
+      - redis
+    secrets:
+      - AUTHENTIK_SECRET_KEY
+      - PG_PASS
+
+volumes:
+  database:
+    driver: local
+  redis:
+    driver: local
+
+secrets:
+  AUTHENTIK_SECRET_KEY:
+    external: true
+  PG_PASS:
+    external: true
