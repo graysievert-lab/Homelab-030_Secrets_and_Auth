@@ -5,20 +5,20 @@ This project is dedicated to bootstrapping and subsequent management of Vault co
 
 ## Structure
 **Access management**
-`access_control.tf` — Groups and Policies
-`/policies`	— hcl files for policies
+- `access_control.tf` — Groups and Policies
+- `/policies`	— hcl files for policies
 
 **Plugins**
-`plugin_01_proxmox.tf` — registers plugin https://github.com/mollstam/vault-plugin-secrets-proxmox
+- `plugin_01_proxmox.tf` — registers plugin https://github.com/mollstam/vault-plugin-secrets-proxmox
 
 **Authentication Methods**
-`auth_01_oidc.tf` — OIDC AUTH method
+- `auth_01_oidc.tf` — OIDC AUTH method
 
 **Secrets Engines**
-`secrets_01_kv2_secret.tf` — KV Version 2 secret engine
-`secrets_02_ssh_vm_usercert.tf` — SSH CA for providing short-live SSH certificates that allow access to VMs in the lab
-`secrets_03_ssh_iac_usercert.tf` — SSH CA for providing short-live SSH certificates that allow access to Proxmox nodes
-`secrets_04_proxmox_tokens.tf` — Issuer of Proxmox API tokens that allow access to Proxmox nodes
+- `secrets_01_kv2_secret.tf` — KV Version 2 secret engine
+- `secrets_02_ssh_vm_usercert.tf` — SSH CA for providing short-live SSH certificates that allow access to VMs in the lab
+- `secrets_03_ssh_iac_usercert.tf` — SSH CA for providing short-live SSH certificates that allow access to Proxmox nodes
+- `secrets_04_proxmox_tokens.tf` — Issuer of Proxmox API tokens that allow access to Proxmox nodes
 
 
 ## Preconditions
@@ -47,7 +47,7 @@ user@realm!token_id=token_secret
 ctrl+d
 ```
 
-Overwrite the configuration for the Proxmox secrets engine (terraform mounts it to `proxmox-tokens`) :
+Overwrite the configuration for the Proxmox secrets engine (terraform mounts it to `proxmox-tokens`):
 ```bash
 $ vault write proxmox-tokens/config \
 user=$(awk -F'[@!]' '{print $1}' <<< "$TF_VAR_pvetoken") \
@@ -84,6 +84,7 @@ $ pveum user token list iac@pam --output-format=yaml
 
 ### OIDC Auth Method manual steps
 Visit [https://aegis.lan:8200/ui/vault/settings/auth/configure/oidc/configuration](https://aegis.lan:8200/ui/vault/settings/auth/configure/oidc/configuration) (this should be the last time we used root token for login) and change `OIDC client secret` at `Auth Methods->oidc->Configure->OIDC Options` to the value configured [earlier](https://github.com/graysievert/Homelab-030_Secrets_and_Auth/tree/master/110-infra_vault_and_authentik#configure-oidc-provider-for-vault).
+
 NOTE: `OIDC client ID` should be changed only via terraform as there are multiple dependencies on its value.
 
 To check the OIDC login method:
@@ -138,8 +139,11 @@ token_meta_role  	login_mapper
 
 ### Projects' secrets
 The goal is to create a separate folder for each project, each containing its own Terraform files. Each folder should include Terraform configurations specific to that project’s Vault resources. This approach ensures that the lifecycle of Vault resources can be managed independently for each project.
+
 Check example [`template_project_secrets`](https://github.com/graysievert/Homelab-030_Secrets_and_Auth/tree/master/template_project_secrets) for details.
 
 ###  Secrets for `bpg/proxmox` terraform provider
-The resources defined in `secrets_03_ssh_iac_usercert.tf` and `secrets_04_proxmox_tokens.tf` enable short-term access to Proxmox by setting up the environment with the required secrets for [bpg/proxmox](https://registry.terraform.io/providers/bpg/proxmox/latest/docs) provider to operate. See [Priming bpg/proxmox terraform provider with secrets from Vault](https://github.com/graysievert/Homelab-020_Proxmox_basic/tree/master/140-Priming_TF_provider_with_Vault) for details.
+The resources defined in `secrets_03_ssh_iac_usercert.tf` and `secrets_04_proxmox_tokens.tf` enable short-term access to Proxmox by setting up the environment with the required secrets for [bpg/proxmox](https://registry.terraform.io/providers/bpg/proxmox/latest/docs) provider to operate.
+
+See [Priming bpg/proxmox terraform provider with secrets from Vault](https://github.com/graysievert/Homelab-020_Proxmox_basic/tree/master/140-Priming_TF_provider_with_Vault) for details.
 
