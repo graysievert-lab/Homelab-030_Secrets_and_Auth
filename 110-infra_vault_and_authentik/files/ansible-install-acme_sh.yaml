@@ -78,8 +78,6 @@
             HOME=/root USER=root /root/acme.sh \
             --set-default-ca \
             --server https://acme.lan:8443/acme/ACME@acme.lan/directory
-          # args:
-          #   chdir: "/root"
 
         - name: "Issue cert for {{ ansible_fqdn }} and {{ ansible_default_ipv4.address }}"
           ## --renew-hook is used as a workaround to copy certs into several folders.
@@ -95,8 +93,6 @@
             --valid-to  "+2d" \
             --renew-hook '/root/acme.sh --install-cert --domain {{ ansible_fqdn }} --fullchain-file /opt/tls/tls.crt --key-file /opt/tls/tls.key --reloadcmd "pkill -SIGHUP vault" &&
                           /root/acme.sh --install-cert --domain {{ ansible_fqdn }} --fullchain-file /opt/init/authentik/certs/tls.crt --key-file /opt/init/authentik/certs/tls.key'
-          # args:
-          #   chdir: "/root/.acme.sh"
             
         - name: "Ianstall cert do shared folder"
           ansible.builtin.shell: |
@@ -105,8 +101,6 @@
             --domain {{ ansible_fqdn }} \
             --fullchain-file /opt/tls/tls.crt  \
             --key-file /opt/tls/tls.key
-          # args:
-          #   chdir: "/root/.acme.sh"
 
         - name: "Ianstall cert do authentik folder"
           ansible.builtin.shell: |
@@ -115,34 +109,3 @@
             --domain {{ ansible_fqdn }} \
             --fullchain-file /opt/init/authentik/certs/tls.crt  \
             --key-file /opt/init/authentik/certs/tls.key
-          # args:
-          #   chdir: "/root/.acme.sh"
-
-
-# /root/acme.sh --install --accountemail  acme@homelab.lan 
-
-# /root/acme.sh --set-default-ca --server https://acme.lan:8443/acme/ACME@acme.lan/directory
-
-# /root/acme.sh --issue --standalone --force \
-# --domain aegis.lan --domain 10.1.2.1 --valid-to  "+2d" \
-# --renew-hook "echo Renewed"
-
-# /root/acme.sh --issue --standalone --force \
-# --domain aegis.lan --domain 10.1.2.1 --valid-to  "+2d" \
-# --renew-hook '/root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/init/authentik/certs/tls.crt --key-file /opt/init/authentik/certs/tls.key &&
-#               /root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/tls/tls.crt --key-file /opt/tls/tls.key --reloadcmd "pkill -SIGHUP vault"'
-
-# /root/acme.sh --install-cert --domain aegis.lan --fullchain-file /opt/init/authentik/certs/tls.crt --fullchain-file /opt/tls/tls.crt
-
-
-# /root/acme.sh --install-cert \
-# --domain aegis.lan \
-# --cert-file      /opt/new1/cert.pem  \
-# --key-file       /opt/new1/key.pem  \
-# --fullchain-file /opt/new1/fullchain.pem \
-# --reloadcmd     "reload new1"
-
-#/root/acme.sh --deploy --domain aegis.lan --deploy-hook "myscript"
-#/root/acme.sh --renew --force --domain aegis.lan
-
-####--------
