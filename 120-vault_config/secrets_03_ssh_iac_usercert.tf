@@ -41,8 +41,8 @@ resource "vault_ssh_secret_backend_role" "sengine_ssh_iac_usercert_role_iac" {
   }
   allowed_users = "iac"
   default_user  = "iac"
-  ttl           = "600" #10min
-  max_ttl       = "600" #10min
+  ttl           = "3600" #1h
+  max_ttl       = "3600" #1h
 }
 
 output "sengine_ssh_iac_usercert_public_key" {

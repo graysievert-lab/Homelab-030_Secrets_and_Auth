@@ -37,8 +37,8 @@ resource "vault_ssh_secret_backend_role" "sengine_ssh_vm_usercert_role_rocky" {
   }
   allowed_users = "rocky"
   default_user  = "rocky"
-  ttl           = "600" #10min
-  max_ttl       = "600" #10min
+  ttl           = "14400" #4h
+  max_ttl       = "14400" #4h
 }
 
 output "sengine_ssh_vm_usercert_public_key" {
