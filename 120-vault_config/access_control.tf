@@ -9,6 +9,7 @@ locals {
     "init-devops",
     "manage-ssh-vm-usercert",
     "use-ssh-vm-usercert-rocky",
+    "use-ssh-vm-usercert-wheel",
     "manage-ssh-iac-usercert",
     "use-ssh-iac-usercert-iac",
     "manage-proxmox-tokens",

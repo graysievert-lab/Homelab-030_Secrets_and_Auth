@@ -41,6 +41,27 @@ resource "vault_ssh_secret_backend_role" "sengine_ssh_vm_usercert_role_rocky" {
   max_ttl       = "14400" #4h
 }
 
+# SSH secrets engine role to get ssh key and signed ssh certificate for a typical "wheel" users
+resource "vault_ssh_secret_backend_role" "sengine_ssh_vm_usercert_role_wheel" {
+  ## Related:
+  ##  policies/use-ssh-vm-usercert-wheel.hcl
+  name                    = "wheel"
+  backend                 = vault_mount.sengine_ssh_vm_usercert.path
+  key_type                = "ca"
+  allow_user_certificates = true
+  allow_host_certificates = false
+  allow_user_key_ids      = false
+  allowed_extensions      = ""
+  default_extensions = {
+    "permit-pty" : ""
+  }
+  allowed_users = "rocky,ec2-user,ubuntu,alpine"
+  ttl           = "14400" #4h
+  max_ttl       = "14400" #4h
+}
+
+
+
 output "sengine_ssh_vm_usercert_public_key" {
   description = "Public key for ssh-vm-usercert CA"
   value       = vault_ssh_secret_backend_ca.sengine_ssh_vm_usercert_cfg.public_key
