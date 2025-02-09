@@ -84,3 +84,4 @@ path "secret/data/cluster.lan/{{identity.entity.aliases.${vault_jwt_auth_backend
 }
 EOF
 }
+
